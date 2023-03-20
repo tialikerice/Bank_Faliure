@@ -519,7 +519,7 @@ d3.select("body")
                     .attr("y2", y(d.totalAssets))
                     .on("end", () => {
 
-                        const numPetals = Math.ceil(d.bankFailures/3);
+                        const numPetals = Math.ceil(d.bankFailures);
                         
                         const angleIncrement = (Math.PI / 2) / (numPetals + 1);
                         const startAngle = -Math.PI / 2 - (numPetals - 1) * angleIncrement / 2;
