@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-color Keyword Bubble Chart</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        svg {
+            display: block;
+            margin: auto;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: black;
+            shape-rendering: crispEdges;
+        }
+        .chart-title {
+    font-size: 24px;
+    font-weight: bold;
+    text-anchor: middle;
+}
+.axis-title {
+    font-size: 14px;
+    font-weight: bold;
+    text-anchor: middle;
+}
+    </style>
+</head>
+<body>
+<h1 style="font-family: NYTFranklin, Georgia, serif; text-align: center;">Top 50 Bank Bubble Chart</h1>
+<div id = "bubbleChart" style="font-family: NYTFranklin, Georgia, serif; text-align: center; display: flex; justify-content: center; align-items: center; margin-top: 10px;">
+    <div style="background-color: #fbcdcd; width: 30px; height: 20px; margin-right: 5px;"></div>
+    <span>Approx. Asset (Millions)</span>
+    <div style="background-color: #c4d7ea; width: 30px; height: 20px; margin: 0px 5px;"></div>
+    <span>Approx. Deposit (Millions)</span>
+</div>
+<div style="position: relative; display: flex; align-items: center;font-family: NYTFranklin, Georgia, serif;">
+    <div style="position: absolute; left: 0; top: 0;">
+        <button id="sortButton">Rank as Closing Time</button>
+        <button id="backButton">Rank as default</button>
+        <svg id="chart" width="1200" height="800"></svg>
+    </div>
+    <div id="info" width="800" height="800" style="position: absolute; left: 1210px; transform: translateY(100%); font-size: 20px;"></div>
+</div>
+<br />
+<hr class="solid" style="margin-top: 800px;font-family: NYTFranklin, Georgia, serif;">
+<div id = "popchart" style="margin-top: 0px;font-family: NYTFranklin, Georgia, serif;">
+    <h1 style="font-family: NYTFranklin, Georgia, serif; text-align: center;">Bank Failures Lollipop Chart</h1>
+    <h2 style="font-family: NYTFranklin, Georgia, serif; text-align: center;">The number of petals represents the number of failed banks,
+    <br>and the length of the stem represents the total assets of the failed banks.</h2>
+
+</div>
+
+      
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        function wrap(text, width) {
+        text.each(function () {
+            var text = d3.select(this),
+                words = text.text().split(/\s+/).reverse(),
+                word,
+                line = [],
+                lineNumber = 0,
+                lineHeight = 1.1, // ems
+                x = text.attr("x"),
+                y = text.attr("y"),
+                dy = 0, //parseFloat(text.attr("dy")),
+                tspan = text.text(null)
+                    .append("tspan")
+                    .attr("x", x)
+                    .attr("y", y)
+                    .attr("dy", dy + "em");
+            while (word = words.pop()) {
+                line.push(word);
+                tspan.text(line.join(" "));
+                if (tspan.node().getComputedTextLength() > width) {
+                    line.pop();
+                    tspan.text(line.join(" "));
+                    line = [word];
+                    tspan = text.append("tspan")
+                        .attr("x", x)
+                        .attr("y", y)
+                        .attr("dy", ++lineNumber * lineHeight + dy + "em")
+                        .text(word);
+                }
+            }
+        });
+    }
+
+        const requestData = async function() {
+        const FDICdata = await d3.csv('data4.csv');
+        let selectedCircle = null;
+        const data1 = [];
+        function parseCurrencyStringToNumber(str) {
+            const cleanedString = str.replace(/[^0-9.]+/g, "");
+            const number = parseFloat(cleanedString);
+            return number;
+        }
+        FDICdata.forEach((d) => {
+            const name = Number(d['ID']);
+            const transaction = String(d['Acquirer & Transaction'])
+            const bankName = String(d['Bank Name']);
+            const location = String(d[' City, State']);
+            const Release = String(d['Press Release (PR)']);
+            const closeTime = String(d['Closing Date']);
+            const asset = parseCurrencyStringToNumber(d['Approx. Asset (Millions)']);
+            const deposit = parseCurrencyStringToNumber(d['Approx. Deposit (Millions)']);
+            data1.push([name, [asset, deposit, bankName, location, closeTime, Release,transaction]]);
+        });
+        const data = data1.sort((a, b) => b[1][0] - a[1][0]).slice(0, 50);
+let maxValue = 0;
+data.forEach((d) => {
+  const [asset, deposit, bankName, location, closeTime, Release, transaction] = d[1];
+  maxValue = Math.max(maxValue, asset, deposit);
+});
+
+const scale = d3.scaleLinear()
+  .domain([0, maxValue])
+  .range([0, 100]);
+
+function scaledValue(value) {
+  return scale(value);
+}
+
+const nodes = data.map(([label, [value1, value2, name, location, closeTime, Release, transaction]]) => {
+  const scaledValue1 = scaledValue(value1);
+  const scaledValue2 = scaledValue(value2);
+  const total = scaledValue1 + scaledValue2;
+  return {
+    label,
+    value1,
+    name,
+    location,
+    closeTime,
+    Release,
+    transaction,
+    value2,
+    scaledValue1,
+    scaledValue2,
+    radius: Math.sqrt(total / Math.PI)*20,
+  };
+});
+
+
+const width = 1000;
+const height = 800;
+
+const svg = d3.select("#chart");
+const svbIndex = nodes.findIndex(d => d.name == "Silicon Valley Bank");
+function ticked() {
+    bubbles.attr("transform", d => `translate(${d.x}, ${d.y})`);
+}
+
+const simulation = d3.forceSimulation(nodes)
+    .force("charge", d3.forceManyBody().strength(5))
+    .force("collide", d3.forceCollide().radius(d => d.radius))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("x", d3.forceX().strength(0.1).x(width / 2))
+  .force("y", d3.forceY().strength(0.1).y(height / 2))
+    .on("tick", ticked);
+const bubbles = svg.selectAll("g")
+    .data(nodes)
+    .join("g")
+    .call(drag(simulation));
+const linesAndText = svg.append("g");
+
+const defs = svg.append("defs");
+
+bubbles.each(function(d) {
+    const patternId = `pattern-${d.label}`;
+    console.log(patternId)
+
+    const pattern = defs.append("pattern")
+        .attr("id", patternId)
+        .attr("patternUnits", "objectBoundingBox")
+        .attr("width", 1)
+        .attr("height", 1);
+
+    const patternSvg = pattern.append("svg")
+        .attr("width", d.radius * 2)
+        .attr("height", d.radius * 2);
+
+    const ratio = (d.scaledValue1/(d.scaledValue1+d.scaledValue2))
+    patternSvg.append("rect")
+        .attr("class", "react1")
+        .attr("width", d.radius * 2 * ratio)
+        .attr("height", d.radius * 2)
+        .attr("fill", "#c4d7ea");
+
+    patternSvg.append("rect")
+    .attr("class", "react2")
+        .attr("x", d.radius * 2 * ratio)
+        .attr("width", d.radius * 2 * (1 - ratio))
+        .attr("height", d.radius * 2)
+        .attr("fill", "#fbcdcd");
+});
+
+
+bubbles.append("circle")
+    .attr("r", d => d.radius)
+    .attr("fill", d => `url(#pattern-${d.label})`)
+    .on("mouseover", function(event, d) {
+        d3.select(event.currentTarget).style("cursor", "pointer")
+        d3.select(`#pattern-${d.label}`).select(".react1").attr("fill", "#a9d3fc");
+        d3.select(`#pattern-${d.label}`).select(".react2").attr("fill", "#faa5a5");
+    })
+    .on("mouseout", function(event, d) {
+        d3.select(event.currentTarget).style("cursor", "default")
+        d3.select(`#pattern-${d.label}`).select(".react1").attr("fill", "#c4d7ea");
+        d3.select(`#pattern-${d.label}`).select(".react2").attr("fill", "#fbcdcd");
+    })
+    .on("click", (event, d) => {
+        if (selectedCircle !== null) {
+                        selectedCircle.style("stroke-width", 0)
+                                    .style("stroke", "None")
+                    }
+                    d3.select(event.currentTarget)
+                                    .style("stroke-width", 3)
+                                    .style("stroke", "black")
+                    selectedCircle = d3.select(event.currentTarget);
+        d3.select("#info").html(`Bank: ${d.name} 
+            <br> Location: ${d.location} 
+            <br> Closing Time: ${d.closeTime} 
+            <br> Press Release (PR): ${d.Release}
+            <br> Approx. Asset (Millions): $${d.value1}
+            <br> Approx. Deposit (Millions): $${d.value2}
+            <br> Acquirer & Transaction: ${d.transaction}`);
+    });
+// Append the labels
+bubbles.append("text")
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "middle")
+    .attr("font-size", d => d.radius / 5.7)
+    .attr("dy", d => -d.radius / 8)
+    .text(d => d.name)
+    .attr("fill", "black");
+
+// Append the values
+bubbles.append("text")
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "middle")
+    .attr("font-size", d => d.radius / 4)
+    .attr("dy", d => d.radius / 8)
+    .text(d => `${d.value1}-${d.value2}`)
+    .attr("fill", "black");
+
+    
+    function drag(simulation) {
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
+        
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
+        
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }
+        
+        return d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended);
+    }
+
+    function zoomed(event) {
+    bubbles.attr("transform", d => `translate(${event.transform.applyX(d.x)}, ${event.transform.applyY(d.y)}) scale(${event.transform.k})`);
+}
+function dragended(event) {
+    if (!event.active) {
+        simulation.alphaTarget(0);
+        zoomBehavior.scaleTo(svg, 1);
+        zoomBehavior.translateTo(svg, width / 2, height / 2);
+    }
+    event.subject.fx = null;
+    event.subject.fy = null;
+}
+
+function sortByClosingTime() {
+    const margin = {top: 50, left: 50, right: 50, bottom: 50};
+
+    nodes.forEach(d => {
+        d.date = d3.timeParse("%d-%b-%y")(d.closeTime);
+        console.log(d.date)
+    });
+
+
+    nodes.sort((a, b) => a.date - b.date);
+
+
+    const xScale = d3.scaleTime()
+        .domain([new Date(1999, 0, 1), new Date(2025, 0, 1)])
+        .range([margin.left-10, width - margin.right]);
+
+    console.log(d3.extent(nodes, d => d.date))
+    const xAxis = d3.axisTop(xScale)
+        .tickFormat(d3.timeFormat("%Y-%m-%d"))
+        .tickSizeOuter(0)
+        .tickSizeInner(-height + margin.top + margin.bottom);
+
+
+    svg.append("g")
+        .attr("class", "xAxis")
+        .attr("transform", `translate(${margin.left}, ${margin.top - 0})`) 
+        .style("stroke", "grey")
+        .style("stroke-dasharray", "1,2") 
+        .style("color", "grey")
+        .call(xAxis);
+
+    // 更新气泡位置
+    const svbIndex = nodes.findIndex(d => d.name == "Silicon Valley Bank");
+    simulation.force("x", d3.forceX().strength(0.7).x(d => xScale(d.date)))
+        .alpha(2).restart()
+    simulation.on("tick", ticked);
+    bubbles.raise();
+    
+}
+document.getElementById("sortButton").addEventListener("click", function() {
+    sortByClosingTime();
+});
+function sortByDefualt() {
+  simulation.force("charge", d3.forceManyBody().strength(5))
+    .force("collide", d3.forceCollide().radius(d => d.radius))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("x", d3.forceX().strength(0.1).x(width / 2))
+  .force("y", d3.forceY().strength(0.1).y(height / 2)).alpha(2).restart();
+    svg.selectAll(".xAxis").remove();
+}
+document.getElementById("backButton").addEventListener("click", function() {
+    sortByDefualt();
+});
+        }
+    requestData();
+
+
+
+
+//////////
+    const popchart = function() {
+        const data = [
+        {year: 2001, bankFailures: 4, totalAssets: 2358.6},
+        {year: 2002, bankFailures: 11, totalAssets: 2705.4},
+        {year: 2003, bankFailures: 3, totalAssets: 1045.2},
+        {year: 2004, bankFailures: 4, totalAssets: 163.1},
+        {year: 2005, bankFailures: 0, totalAssets: 0},
+        {year: 2006, bankFailures: 0, totalAssets: 0},
+        {year: 2007, bankFailures: 3, totalAssets: 2602.5},
+        {year: 2008, bankFailures: 25, totalAssets: 373588.8},
+        {year: 2009, bankFailures: 140, totalAssets: 170909.4},
+        {year: 2010, bankFailures: 157, totalAssets: 96514.0},
+        {year: 2011, bankFailures: 92, totalAssets: 36012.2},
+        {year: 2012, bankFailures: 51, totalAssets: 12055.8},
+        {year: 2013, bankFailures: 24, totalAssets: 6101.7},
+        {year: 2014, bankFailures: 18, totalAssets: 3088.4},
+        {year: 2015, bankFailures: 8, totalAssets: 6727.5},
+        {year: 2016, bankFailures: 5, totalAssets: 278.8},
+        {year: 2017, bankFailures: 8, totalAssets: 6530.7},
+        {year: 2018, bankFailures: 0, totalAssets: 0},
+        {year: 2019, bankFailures: 4, totalAssets: 214.1},
+        {year: 2020, bankFailures: 4, totalAssets: 458.0},
+        {year: 2021, bankFailures: 0, totalAssets: 0},
+        {year: 2022, bankFailures: 0, totalAssets: 0},
+        {year: 2023, bankFailures: 2, totalAssets: 319400.0}
+    ];
+
+    const margin = {top: 60, right: 60, bottom: 60, left: 100},
+        width = 1200 - margin.left - margin.right,
+        height = 600 - margin.top - margin.bottom;
+
+    const svg2 = d3.select("#popchart")
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform",
+            "translate(" + margin.left + "," + margin.top + ")");
+
+    const x = d3.scaleBand()
+        .range([0, width])
+        .domain(data.map(d => d.year))
+        .padding(1);
+    svg2.append("g")
+        .attr("transform", "translate(0," + height + ")")
+        .call(d3.axisBottom(x))
+        .selectAll("text")
+        .attr("transform", "translate(-10,0)rotate(-45)")
+        .style("text-anchor", "end");
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.totalAssets)])
+        .range([height, 0]);
+    svg2.append("g")
+        .call(d3.axisLeft(y));
+
+    svg2.selectAll(".myline")
+        .data(data)
+        .enter()
+        .append("line")
+        .attr("class", "myline")
+        .attr("x1", d => x(d.year))
+        .attr("x2", d => x(d.year))
+        .attr("y1", d => y(d.totalAssets))
+        .attr("y2", y(0))
+        .attr("stroke", "green")
+        .attr("stroke-width", "1.5px");
+
+    // new flower styles
+    const drawPetal = (cx, cy, length, angle) => {
+        const r1 = length * 0.2;
+        const r2 = length * 0.9;
+        const x1 = cx + r1 * Math.cos(angle + Math.PI / 4);
+        const y1 = cy + r1 * Math.sin(angle + Math.PI / 4);
+        const x2 = cx + r2 * Math.cos(angle - Math.PI / 8);
+        const y2 = cy + r2 * Math.sin(angle - Math.PI / 4);
+        const x3 = cx + length * Math.cos(angle);
+        const y3 = cy + length * Math.sin(angle);
+
+        return `M${cx},${cy} Q${x1},${y1} ${x2},${y2} Q${x3},${y3} ${cx},${cy}`;
+    };
+
+// 绘制花瓣
+/* const drawPetal = (cx, cy, length, angle) => {
+        const r1 = length * 0.1;
+        const r2 = length * 0.9;
+        const x1 = cx + r1 * Math.cos(angle + Math.PI / 2);
+        const y1 = cy + r1 * Math.sin(angle + Math.PI / 2);
+        const x2 = cx + r2 * Math.cos(angle);
+        const y2 = cy + r2 * Math.sin(angle);
+
+        return `M${cx},${cy} Q${x1},${y1} ${x2},${y2} L${cx},${cy}`;
+    }; */
+        data.forEach(d => {
+        const cx = x(d.year);
+        const cy = y(d.totalAssets);
+        const length = 40;
+
+        const numPetals = Math.ceil(d.bankFailures);
+                        
+        const angleIncrement = (Math.PI / 2) / (numPetals + 1);
+        const maxAngle = Math.PI / 6;
+
+        const startAngle = -Math.PI / 2 - (numPetals - 1) * angleIncrement / 2;
+
+        for (let i = 0; i < numPetals; i++) {
+            const angle = i * angleIncrement + startAngle;
+            svg2.append("path")
+                        .attr("class", "flowerpiece")
+                        .attr("id", `petal-${d.year}-${i}`)
+                        .attr("d", drawPetal(x(d.year), y(d.totalAssets), 0, i * angleIncrement + startAngle))
+                        .attr("fill", "pink")
+                        .attr("stroke", "black")
+                        .attr("stroke-width", 0.1)
+                        .transition()
+                        .duration(1000)
+                        .delay(i * 20)
+                        .attr("d", drawPetal(x(d.year), y(d.totalAssets), length, i * angleIncrement + startAngle))
+                        .on("end", () => {
+        if (i === numPetals - 1) { // Add the text only when the last petal animation ends
+            svg2.append("text")
+                .attr("class", "amount")
+                .attr("x", x(d.year))
+                .attr("y", y(d.totalAssets) - 50) // Adjust this value to position the text above the petals
+                .attr("text-anchor", "middle")
+                .text(d.bankFailures);
+        }
+    });
+        }
+    });
+
+svg2.append("text")
+    .attr("class", "axis-title")
+    .attr("x", width / 2)
+    .attr("y", height + margin.bottom / 1.5)
+    .text("Time");
+
+svg2.append("text")
+    .attr("class", "axis-title")
+    .attr("transform", "rotate(-90)")
+    .attr("y", -margin.left / 1.5)
+    .attr("x", -height / 2)
+    .text("Total Asset");
+
+d3.select("body")
+        .append("button")
+        .text("Reply")
+        .on("click", () => {
+
+            svg2.selectAll(".flowerpiece").remove();
+            svg2.selectAll(".myline").remove();
+            svg2.selectAll(".amount").remove();
+
+
+            data.forEach((d, index) => {
+                svg2.append("line")
+                .attr("class", "myline")
+                    .attr("x1", x(d.year))
+                    .attr("y1", y(0))
+                    .attr("x2", x(d.year))
+                    .attr("y2", y(0))
+                    .attr("stroke", "green")
+                    .attr("stroke-width", "1.5px")
+                    .transition()
+                    .duration(1000)
+                    .delay(index * 500)
+                    .attr("y2", y(d.totalAssets))
+                    .on("end", () => {
+
+                        const numPetals = Math.ceil(d.bankFailures/3);
+                        
+                        const angleIncrement = (Math.PI / 2) / (numPetals + 1);
+                        const startAngle = -Math.PI / 2 - (numPetals - 1) * angleIncrement / 2;
+                        for (let i = 0; i < numPetals; i++) {
+
+                            svg2.append("path")
+                                .attr("class", "flowerpiece")
+                                .attr("id", `petal-${d.year}-${i}`)
+                                .attr("d", drawPetal(x(d.year), y(d.totalAssets), 0, i * angleIncrement + startAngle))
+                                .attr("fill", "pink")
+                                .attr("stroke", "black")
+                                .attr("stroke-width", 0.1)
+                                .transition()
+                                .duration(1000)
+                                .delay(i * 20)
+                                .attr("d", drawPetal(x(d.year), y(d.totalAssets), 40, i * angleIncrement + startAngle))
+                                .on("end", () => {
+        if (i === numPetals - 1) { // Add the text only when the last petal animation ends
+            svg2.append("text")
+                .attr("class", "amount")
+                .attr("x", x(d.year))
+                .attr("y", y(d.totalAssets) - 50) // Adjust this value to position the text above the petals
+                .attr("text-anchor", "middle")
+                .text(d.bankFailures);
+        }
+    });
+                        }
+                    });
+            });
+        });
+    }
+
+    popchart();
+    </script>
+</body>
+</html>
